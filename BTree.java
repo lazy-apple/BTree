@@ -8,27 +8,40 @@ import javax.tools.DocumentationTool.Location;
 /***
  * B树
  * 
+ * 出现过的问题：
+ * 
+ * 1.插入：因为递归放在了循环里，所以执行完递归后，一定要在递归语句后面加上break。跳出循环；
+ *
+ * 此外！因为while循环中还有一层for循环，当跳出for循环后，仍然在循环中。为了跳出最外层，增加标记，在插入数据后，改变标记的值，在所有插入操作结束后，恢复标记。
+ * 
+ * 2.插入过程中父节点孩子的移动，当节点位于父节点的末尾，只需要在末尾扩容，不需要移动。
+ * 
+ * 3.分裂：如果分裂的节点有孩子，那么新创建的节点应该为非叶子节点。
+ * 
+ * 4.删除：删除内部结点的前两种情况（即儿子节点至少有一个关键字是足够的）：因为当前节点的关键字替换为下面节点的关键字，递归删除的是下面节点的关键字，所以，递归的节点不应该是当前节点，应该是，当前节点的儿子节点
+ * 
+ * 5.删除：删除内部结点的第三种情况（合并）：当关键字的儿子节点是叶子节点，不需要再处理儿子的儿子们了，会报空指针。
+ * 
+ * 6.理解错误：删除时，当孩子节点的关键字数足够，找出孩子节点为根的子树的前驱或后继
+ * 
+ * 待完善：
+ * 
+ * 1.插入部分:判断当前节点的下一个要访问的位置是否未满，满则分裂。这样要比判断当前节点是否为满结构要清晰，写起来方便，易理解。
+ * 
+ * 2.删除部分：可读性较低
+ * 
  * @author LaZY（李志一）
  * 
- *         出现过的问题：
  * 
- *         1.插入：因为递归放在了循环里，所以执行完递归后，一定要在递归语句后面加上break。跳出循环；
- *
- *         此外！因为while循环中还有一层for循环，当跳出for循环后，仍然在循环中。为了跳出最外层，增加标记，在插入数据后，改变标记的值，在所有插入操作结束后，恢复标记。
- * 
- *         2.插入过程中父节点孩子的移动，当节点位于父节点的末尾，只需要在末尾扩容，不需要移动。
- * 
- * 
- *         待完善：
- * 
- *         1.插入部分:判断当前节点的下一个要访问的位置是否未满，满则分裂。这样要比判断当前节点是否为满结构要清晰，写起来方便，易理解。
  */
 public class BTree {
-	public final static int t = 3;// B树的最小度
-
 	public static BTree_node root;// B树的根节点
 
+	public final static int t = 2;// B树的最小度
+
 	private static boolean sign = false;// 标记：
+
+	private static final Disk DISK = new Disk();// 磁盘
 
 	/***
 	 * B树的初始化
@@ -38,6 +51,8 @@ public class BTree {
 		node.leaf = true;// 当前节点设为叶子节点
 		node.countKey = 0;
 		this.root = node;
+		// HED 磁盘写
+		this.DISK.WRITE(this.root);
 	}
 
 	/**
@@ -46,7 +61,7 @@ public class BTree {
 	 * @return t:是空树； f:不是空树
 	 */
 	public boolean isEmpty() {
-		if (this.root.countKey == 0) {
+		if (this.root.key.size() == 0) {
 			return true;
 		} else {
 			return false;
@@ -158,6 +173,10 @@ public class BTree {
 		if (this.isEmpty()) {// 空树（根节点无关键字）
 			r.key.add(k);// 直接插入
 			r.countKey = 1;// 增加关键字数量
+
+			// HED 磁盘写
+			this.DISK.WRITE(r);
+
 		} else if (r.isFull()) {// 满根即分裂/注意：满根的情况必须先分裂再插入，否则儿子不够分
 			BTree_node newRoot = splitRoot(r);// 分裂根节点，并产生新根
 			this.root = newRoot;// B树的根节点指向新根
@@ -166,6 +185,10 @@ public class BTree {
 			r.key.add(k);// 直接插入
 			Collections.sort(r.key);// 插入后排序（递增）
 			r.countKey++;// 增加关键字数量//
+
+			// HED 磁盘写
+			this.DISK.WRITE(r);
+
 		}
 	}
 
@@ -188,6 +211,10 @@ public class BTree {
 			node.key.add(k);// 直接插入
 			Collections.sort(node.key);// 插入后排序（递增）
 			node.countKey++;// 增加关键字数量
+
+			// HED 磁盘写
+			this.DISK.WRITE(node);
+
 		}
 	}
 
@@ -214,6 +241,12 @@ public class BTree {
 		newNode.parent = newRoot;
 		newRoot.key.add(middleKey);// 为新的根节点赋关键字
 		newRoot.countKey = 1;// 修改新的关键字的数量
+
+		// HED 磁盘写
+		this.DISK.WRITE(root);
+		this.DISK.WRITE(newNode);
+		this.DISK.WRITE(newRoot);
+
 		return newRoot;
 	}
 
@@ -237,6 +270,12 @@ public class BTree {
 		parent.key.add(middleKey);// 父节点中插入提升的关键字
 		Collections.sort(parent.key);// 为父节点插入后的关键字排序
 		parent.countKey = 1;// 修改父节点的关键字的数量
+
+		// HED 磁盘写
+		this.DISK.WRITE(root);
+		this.DISK.WRITE(parent);
+		this.DISK.WRITE(newNode);
+
 		return parent;
 	}
 
@@ -265,6 +304,12 @@ public class BTree {
 		parent.key.add(middleKey);// 父节点中插入提升的关键字
 		Collections.sort(parent.key);// 为父节点插入后的关键字排序
 		parent.countKey = 1;// 修改父节点的关键字的数量
+
+		// HED 磁盘写
+		this.DISK.WRITE(root);
+		this.DISK.WRITE(parent);
+		this.DISK.WRITE(newNode);
+
 		return parent;
 	}
 
@@ -323,13 +368,18 @@ public class BTree {
 	public BTree_node makeNewNodeKey(int middle, BTree_node node) {
 		int size = node.key.size();
 		int newKeyCount = size - middle;// 要提升的关键字后面的关键字数量
-		BTree_node leftNode = getLeftNode();// 创建新的被分裂出的节点（一定是叶子节点）
+		BTree_node newNode;
+		if (node.children.size() != 0) {
+			newNode = getRNode();// 如果有孩子，则创建的是非叶子节点
+		} else {
+			newNode = getLeftNode();// 创建新的被分裂出的节点（一定是叶子节点）
+		}
 		for (int i = middle - 1 + 1; i < size; i++) {// (middle-1+1）：集合中的元素从0开始，middle-1：要提升的关键字，middle-1+1：要提升关键字后一个关键字
 			int key = node.key.get(i);// 把要提升的关键字后面的关键字赋给分裂出的节点（刚创建的）
-			leftNode.key.add(key);
+			newNode.key.add(key);
 		}
-		leftNode.countKey = newKeyCount;
-		return leftNode;
+		newNode.countKey = newKeyCount;
+		return newNode;
 	}
 
 	/***
@@ -400,4 +450,403 @@ public class BTree {
 		}
 		return location = index + 1;
 	}
+
+	public void delete(int k) {
+		if (isEmpty()) {
+			System.out.println("你访问的是空树");// 空树不允许执行删除操作
+		} else {
+			delete(k, this.root);
+		}
+	}
+
+	private void delete(int k, BTree_node node) {
+		int keySize = node.key.size();
+		for (int i = 0; i < keySize; i++) {// 从节点第一个关键字开始查找
+			Integer key = node.key.get(i);
+			if (k < key) {// 要删除的关键字比当前关键字小，就在关键字的前一个子节点（孩子）中寻找
+
+				BTree_node beforeChild = node.children.get(i);
+				int beforeSize = beforeChild.key.size();
+				if (enoughKeys(beforeSize)) {// 对关键字足够的节点，不调整。
+					delete(k, node.children.get(i));
+					break;// 执行完操作后退出循环
+				} else {
+
+					// 对关键字较少的节点，进行调整。
+					BTree_node af_befChild = node.children.get(i + 1);// 要删除的关键字所在子树根节点的后一个节点
+					int size = af_befChild.key.size();
+					if (enoughKeys(size)) {
+						node = del_handleBy_aft(node, key, i, beforeChild, af_befChild);
+						delete(k, node);
+					} else if (!(enoughKeys(size))) {// 关键字不足
+						node = del_mergeBy_aft(node, key, i, beforeChild, af_befChild);
+						delete(k, node);
+					}
+					// else if(!(enoughKeys(size))&&node.isRoot()){//关键字不足，且是根节点
+					//
+					// }
+
+				}
+
+			} else if (k == key) {// 找到要删除的节点
+
+				// 删除关键字
+
+				if (node.isLefe()) {
+					if (node.isRoot() && node.key.size() == 1) {
+						System.out.println("根节点只有一个节点，不许删除");
+					} else {
+						node.key.remove(i);// 是叶子节点，直接删除索引下的关键字
+						node.countKey--;
+						// HED 修改标记
+						this.sign = true;
+					}
+				} else {// 是内部结点
+					BTree_node beforeChild = node.children.get(i);
+					BTree_node afterChild = node.children.get(i + 1);
+					int beforeKeyCount = beforeChild.key.size();
+					int afterKeyCount = afterChild.key.size();
+					/*
+					 * 要删除关键字的前一个节点c的关键字数量不少于t，
+					 * 
+					 * 用c的末尾关键字替换要删除的关键字
+					 * 
+					 * 仍然从当前节点开始 递归删除c
+					 *
+					 */
+					if (enoughKeys(beforeKeyCount)) {
+						int size = beforeChild.key.size();
+
+						Integer lastKey = lefkey(beforeChild);
+						// Integer lastKey = beforeChild.key.get(size - 1);//
+						// 关键字前面孩子的最后一个关键字
+						node.key.set(i, lastKey);
+						delete(lastKey, beforeChild);
+					}
+					/*
+					 * 要删除关键字的后一个节点c的关键字数量不少于t，
+					 * 
+					 * 用c的首关键字替换要删除的关键字
+					 * 
+					 * 仍然从当前节点开始 递归删除c
+					 *
+					 */
+					else if (!(enoughKeys(beforeKeyCount)) && enoughKeys(afterKeyCount)) {
+						int size = afterChild.key.size();
+
+						Integer firstKey = rigkey(afterChild);
+						// Integer firstKey = afterChild.key.get(0);//
+						// 关键字后面孩子的第一个关键字
+						node.key.set(i, firstKey);
+						delete(firstKey, afterChild);// 递归删除儿子节点的关键字
+					}
+					/*
+					 * 根节点只有一关键字
+					 * 
+					 * 合并后，让跟节点指向合并后的节点
+					 */
+
+					else if (node.isRoot() && node.key.size() == 1 && !(enoughKeys(beforeKeyCount))
+							&& !(enoughKeys(afterKeyCount))) {
+						beforeChild.key.add(k);// 要删除的关键字，插入到前一个节点中
+						for (int j = 0; j < afterChild.key.size(); j++) {// 后一个节点的所有关键字保存到前一个节点中
+							Integer keyy = afterChild.key.get(j);
+							// HED 操作的不是对象本身
+							beforeChild.key.add(keyy);
+						}
+						if (beforeChild.isLefe()) {// 当儿子节点是叶子节点，不需要处理儿子的儿子们
+
+						} else {
+							for (int j = 0; j < afterChild.children.size(); j++) {// 后一个节点的所有儿子保存到前一个节点中
+								BTree_node child = afterChild.children.get(j);
+								beforeChild.children.add(child);
+								child.parent = beforeChild;
+							}
+						}
+						beforeChild.countKey += (1 + afterChild.getCountKey());// 修改前一个儿子的关键字的数量
+						this.root = beforeChild;
+						delete(k, this.root);
+					}
+					/*
+					 * 要删除关键字的前后节点的关键字都小于t
+					 * 
+					 * 则将要删除的关键字、前面节点、后面节点合并
+					 * 
+					 */
+					else if (!(enoughKeys(beforeKeyCount)) && !(enoughKeys(afterKeyCount))) {
+						// HED 操作的不是对象本身
+						beforeChild.key.add(k);// 要删除的关键字，插入到前一个节点中
+						for (int j = 0; j < afterChild.key.size(); j++) {// 后一个节点的所有关键字保存到前一个节点中
+							Integer keyy = afterChild.key.get(j);
+							// HED 操作的不是对象本身
+							beforeChild.key.add(keyy);
+						}
+						if (beforeChild.isLefe()) {// 当儿子节点是叶子节点，不需要处理儿子的儿子们
+
+						} else {
+							for (int j = 0; j < afterChild.children.size(); j++) {// 后一个节点的所有儿子保存到前一个节点中
+								BTree_node child = afterChild.children.get(j);
+								beforeChild.children.add(child);
+								child.parent = beforeChild;
+							}
+						}
+						beforeChild.countKey += (1 + afterChild.getCountKey());// 修改前一个儿子的关键字的数量
+						node.key.remove(i);// 从节点个中删除要删掉的关键字
+						node.countKey--;// 修改节点的关键字数量
+						node.children.remove(i + 1);// 删除要删除关键字后面的儿子节点
+
+						// 修改后的节点赋值给原节点。不使用递归的原因1.易错。2.插入以后会跳出循环，不在执行剩下的内容
+						// BTree_node parent = node.parent;
+						// int index = getChildLocation(node);//
+						// 节点在其父节点的孩子中的位置（索引）
+						// parent.children.set(index, node);
+						delete(k, beforeChild);
+					}
+
+				}
+				break;
+			}
+			break;
+		}
+		// HED 需要在退出循环后不进行下面的代码
+		if (this.sign) {
+
+		} else {
+			Integer key = node.key.get(keySize - 1);
+			if (k > keySize) {// 插入的数据比所有关键字大，在最后一个孩子中寻找
+
+				BTree_node afterChild = node.children.get(keySize);
+				int afterSize = afterChild.key.size();
+				if (enoughKeys(afterSize)) {// 对关键字足够的节点，不调整。
+					delete(k, node.children.get(keySize));
+				} else {
+
+					// 对关键字较少的节点，进行调整。
+					BTree_node bef_aftChild = node.children.get(keySize - 1);// 要删除的关键字所在子树根节点的前一个节点
+					int size = bef_aftChild.key.size();
+					if (enoughKeys(size)) {
+						node = del_handleBy_bef(node, key, keySize - 1, afterChild, bef_aftChild);
+						delete(k, node);
+					} else if (!(enoughKeys(size))) {// 关键字不足
+						node = del_mergeBy_bef(node, key, keySize - 1, afterChild, bef_aftChild);
+						delete(k, node);
+					}
+
+				}
+
+			}
+		}
+	}
+
+	/***
+	 * 节点中的关键字个数>=t（至少有t）个关键字
+	 * 
+	 * @param quentity
+	 *            节点中的关键字数量
+	 * @return t:足够 f：不够
+	 */
+	private boolean enoughKeys(int quentity) {
+		if (quentity == this.t || quentity > this.t) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	/***
+	 * 向下查找过程中，要删除的关键字，在当前关键字的前一个节点的子树中，然而，此节点的关键字数不足够。根据前一个节点的后一个节点进行调整
+	 * 
+	 * @param par
+	 *            当前节点
+	 * @param k
+	 *            当前关键字
+	 * @param i
+	 *            关键字的所在索引
+	 * @param chil
+	 *            删除关键字所在的节点
+	 * @param aft_chil
+	 *            删除关键字所在的节点的后一个节点
+	 * @return 返回调整后的当前节点
+	 */
+	private BTree_node del_handleBy_aft(BTree_node par, int k, int i, BTree_node chil, BTree_node aft_chil) {// XXX
+																												// 参数待优化
+		chil.key.add(k);// 父节点的关键字添加到孩子节点中
+		chil.countKey++;
+		par.key.remove(i);// 从父节点删掉刚移除的关键字
+		par.countKey--;
+		Integer key = aft_chil.key.get(0);// 儿子节点的后一个节点的首关键字插入到父节点
+		par.key.add(key);
+		par.countKey++;
+		Collections.sort(par.key);
+		aft_chil.key.remove(0);// 把移除的后一个儿子节点的关键字删掉
+		aft_chil.countKey--;
+		if (chil.isLefe()) {
+
+		} else {// 儿子节点不是叶子节点，处理儿子节点的儿子
+			BTree_node child = aft_chil.children.get(0);// 后一个儿子节点的第一个儿子添加到儿子节点中
+			chil.children.add(child);
+			aft_chil.children.remove(0);
+		}
+		return par;
+	}
+
+	/***
+	 * 向下查找过程中，要删除的关键字，在当前关键字的后一个节点的子树中，然而，此节点的关键字数不足够。根据后一个节点的前一个节点进行调整
+	 * 
+	 * @param par
+	 *            当前节点
+	 * @param k
+	 *            当前关键字
+	 * @param i
+	 *            关键字的所在索引
+	 * @param chil
+	 *            删除关键字所在的节点
+	 * @param bef_chil
+	 *            删除关键字所在的节点的前一个节点
+	 * @return 返回调整后的当前节点
+	 */
+	private BTree_node del_handleBy_bef(BTree_node par, int k, int i, BTree_node chil, BTree_node bef_chil) {// XXX
+																												// 参数待优化
+		chil.key.add(k);// 父节点的关键字添加到孩子节点中
+		Collections.sort(chil.key);
+		chil.countKey++;
+		par.key.remove(i);// 从父节点删掉刚移除的关键字
+		par.countKey--;
+		int size = bef_chil.key.size();
+		Integer key = bef_chil.key.get(size - 1);// 儿子节点的前一个节点的末尾关键字插入到父节点
+		par.key.add(key);
+		Collections.sort(par.key);
+		par.countKey++;
+		bef_chil.key.remove(size - 1);// 把移除的前一个儿子节点的关键字删掉
+		bef_chil.countKey--;
+		if (chil.isLefe()) {
+
+		} else {// 儿子节点不是叶子节点，处理儿子节点的儿子
+			BTree_node child = bef_chil.children.get(bef_chil.children.size() - 1);// 前一个儿子节点的第最后一个儿子添加到儿子节点中
+			chil.children.add(child);// 假数据,扩容
+			for (int j = chil.children.size() - 1; j >= 0; j--) {// 从第一个元素向后移动
+				BTree_node c = chil.children.get(j - 1);
+				chil.children.set(j, c);
+			}
+			chil.children.set(0, child);// 真数据
+			bef_chil.children.remove(bef_chil.children.size() - 1);
+		}
+		return par;
+	}
+
+	/***
+	 * 父节点关键字的子孩子的右边兄弟的关键字也不够，将父节点的此关键字，孩子，和孩子的右兄弟合并,合并到孩子中
+	 * 
+	 * @param par
+	 *            父节点（当前节点）
+	 * @param k
+	 *            父节点的关键字
+	 * @param i
+	 *            关键字位置
+	 * @param chil
+	 *            关键字前的子孩子
+	 * @param aft_chil
+	 *            孩子的右兄弟
+	 * @return 修改后的父节点
+	 */
+	private BTree_node del_mergeBy_aft(BTree_node par, int k, int i, BTree_node chil, BTree_node aft_chil) {
+		chil.key.add(k);// 添加父节点的关键字
+		Collections.sort(chil.key);
+		chil.countKey++;
+		par.key.remove(i);// 父节点的关键字移除
+		par.countKey--;
+		// 此时父节点中还多了一个孩子
+		List<Integer> keys = aft_chil.key;
+		List<BTree_node> children = aft_chil.children;
+		chil.key.addAll(keys);// 添加右兄弟的所有关键字
+		Collections.sort(chil.key);
+		chil.countKey += keys.size();
+		if (chil.isLefe()) {
+
+		} else {
+			for (int j = 0; j < children.size(); j++) {// 添加右兄弟的所有孩子
+				BTree_node child = children.get(j);
+				chil.children.add(child);
+				child.parent = chil;
+			}
+		}
+		par.children.remove(i + 1);// 从父节点中删掉右兄弟
+		if (par.isRoot()) {
+			this.root = chil;
+			chil.parent = null;
+			return this.root;
+		} else {
+			return par;
+		}
+	}
+
+	/***
+	 * 父节点关键字后面的子孩子的左边兄弟的关键字也不够，将父节点的此关键字，孩子，和孩子的左兄弟合并
+	 * 
+	 * @param par
+	 *            父节点（当前节点）
+	 * @param k
+	 *            父节点的关键字
+	 * @param i
+	 *            关键字位置
+	 * @param chil
+	 *            关键字后的子孩子
+	 * @param aft_chil
+	 *            孩子的左兄弟
+	 * @return 修改后的父节点
+	 */
+	private BTree_node del_mergeBy_bef(BTree_node par, int k, int i, BTree_node chil, BTree_node bef_chil) {
+		chil.key.add(k);// 添加父节点的关键字
+		Collections.sort(chil.key);
+		chil.countKey++;
+		par.key.remove(i);// 父节点的关键字移除
+		par.countKey--;
+		// 此时父节点中还多了一个孩子
+		List<Integer> keys = bef_chil.key;
+		List<BTree_node> children = bef_chil.children;
+		chil.key.addAll(keys);// 添加左兄弟的所有关键字
+		Collections.sort(chil.key);
+		chil.countKey += keys.size();
+		if (chil.isLefe()) {
+
+		} else {// 添加右兄弟的所有孩子
+			List<BTree_node> c_children = chil.getChildren();
+			bef_chil.children.addAll(c_children);
+			List<BTree_node> bef_children = bef_chil.getChildren();
+			chil.children.clear();
+			chil.children.addAll(bef_children);
+
+			// }
+		}
+
+		par.children.remove(i);// 从父节点中删掉右兄弟
+		if (par.isRoot()) {
+			this.root = chil;
+			chil.parent = null;
+			return this.root;
+		} else {
+			return par;
+		}
+	}
+
+	public int rigkey(BTree_node node) {
+		int key;
+		while (!(node.isLeaf())) {
+			node = node.children.get(0);
+		}
+		key = node.key.get(0);
+		return key;
+	}
+
+	public int lefkey(BTree_node node) {
+		int key;
+		while (!(node.isLeaf())) {
+			int size = node.children.size();
+			node = node.children.get(size - 1);
+		}
+		int size = node.key.size();
+		key = node.key.get(size - 1);
+		return key;
+	}
+
 }

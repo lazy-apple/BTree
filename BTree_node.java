@@ -24,6 +24,18 @@ public class BTree_node {
 		return countKey;
 	}
 
+	public boolean isLeaf() {
+		return leaf;
+	}
+
+	public List<Integer> getKey() {
+		return key;
+	}
+
+	public List<BTree_node> getChildren() {
+		return children;
+	}
+
 	/***
 	 * 判断指定节点（的关键字）是否已满。关键字个数为2t-1即满。
 	 * 
